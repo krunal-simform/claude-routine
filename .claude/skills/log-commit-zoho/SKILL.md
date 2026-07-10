@@ -15,9 +15,19 @@ description: >-
 
 # Log, Commit, Push & Zoho Subtask
 
-This skill runs a fixed four-step routine. Do the steps **in order** — each step
-depends on the one before it (the Zoho subtask needs the commit link, and the
-commit link needs a successful push).
+This skill runs a fixed routine. Do the steps **in order** — each step depends
+on the one before it (the Zoho subtask needs the commit link, and the commit
+link needs a successful push).
+
+**Push uses the GitHub MCP tools (`mcp__github__push_files`), not the `git
+push` CLI.** The GitHub MCP push creates the commit directly on GitHub via the
+API — it does not transfer your local commit object. That means if you commit
+locally with `git commit` *and separately* push via the API, you end up with
+two different commits with the same content but different SHAs (different
+committer metadata), and local/remote history diverges. To avoid that, treat
+the GitHub-side commit created by `push_files` as the single source of truth,
+then sync your local branch to point at that exact SHA (Step 3) instead of
+computing/using a separately-made local commit SHA.
 
 ## Fixed Zoho identifiers — no lookup needed
 
@@ -77,36 +87,54 @@ Get the timestamp from the system (`date "+%Y-%m-%d %H:%M:%S %Z"`) rather than
 guessing, and **save this exact timestamp** — Step 4 reuses it in the Zoho task
 title and description so the log entry and the ticket line up.
 
-## Step 2 — Commit
+## Step 2 — Commit & push via GitHub MCP
 
-Stage `claude.log` and commit it. Use a clear conventional-style message, e.g.:
+Do **not** run `git commit` / `git push` for this. Instead push `claude.log`
+straight to GitHub with `mcp__github__push_files`, which creates the commit
+and pushes it in one API call:
 
-```
-chore(log): <log message>
-```
+1. Get `owner`/`repo` from `git remote get-url origin` (strip `git@github.com:`
+   / `https://github.com/` prefixes and any trailing `.git`).
+2. Get the target branch with `git branch --show-current`.
+3. Call `mcp__github__push_files` with:
+   - `owner`, `repo`, `branch` from above
+   - `files`: `[{ path: "claude.log", content: "<full contents of claude.log after Step 1's append>" }]`
+   - `message`: a clear conventional-style message, e.g. `chore(log): <log message>`
+4. From the tool's response, record the **commit SHA it created** — this is
+   the authoritative commit id. Do not compute a SHA from local git state; the
+   local repo has not been updated yet at this point.
 
-If the repo has no commits yet, this first commit is fine. Do not amend or force
-anything.
+If the call fails (no `origin` remote, branch protection, etc.), stop and tell
+the user what's missing rather than fabricating a commit — the Zoho subtask
+must contain a real commit URL.
 
-## Step 3 — Push to GitHub
+## Step 3 — Sync the local repo to that exact commit
 
-Push the current branch to the `origin` remote:
+The local working tree is still behind (and may still have the Step 1 edit as
+an uncommitted change). Bring local in line with the commit GitHub just
+created, so the local HEAD SHA and the remote SHA are identical rather than
+two different commits with the same content:
 
 ```bash
-git push -u origin HEAD
+git fetch origin <branch>
 ```
 
-Then capture the details Step 4 needs:
+Then check `git status --porcelain`. If the only pending change is
+`claude.log` (the one this routine just pushed), fast-forward local to match:
 
-- **Commit SHA**: `git rev-parse HEAD`
-- **Remote URL**: `git remote get-url origin`
-- **Commit link**: build the GitHub URL from the remote and SHA, i.e.
-  `https://github.com/<owner>/<repo>/commit/<SHA>` (normalize `git@github.com:`
-  / trailing `.git` remotes into the `https://github.com/...` form).
+```bash
+git reset --hard origin/<branch>
+```
 
-If push fails because there is no `origin` remote or no upstream, stop and tell
-the user what's missing rather than fabricating a link — the Zoho subtask must
-contain a real commit URL.
+If there are *other* uncommitted local changes unrelated to this routine,
+stop and ask the user how to proceed instead of resetting — don't silently
+discard their work.
+
+Capture the details Step 4 needs:
+
+- **Commit SHA**: the SHA returned by `push_files` in Step 2 (equivalently,
+  `git rev-parse HEAD` after the sync above — they must match).
+- **Commit link**: `https://github.com/<owner>/<repo>/commit/<SHA>`.
 
 ## Step 4 — Create the Zoho subtask
 
