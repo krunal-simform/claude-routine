@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_PAT}"
+      }
+    },
+    "zoho-projects": {
+      "type": "http",
+      "url": "https://projects-task-management-929867360.zohomcp.com/mcp/2bb3293af10d9fec9fae6443187c82f9/message"
+    }
+  }
+}
