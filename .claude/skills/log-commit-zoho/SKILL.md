@@ -6,11 +6,25 @@ description: >-
   change and create a Zoho task/subtask", or otherwise wants to append an entry
   to claude.log, commit and push it to GitHub, and then open a subtask under
   Zoho task UNT-T48831. Also use for any direct Zoho ask about UNT-T48831
-  itself — "show me the task", "list its subtasks", "add a subtask/comment to
+  itself — "show me the task", "list its subtasks", "add a subtask to
   UNT-T48831" — since this skill already has the IDs needed to hit it without
   searching. Trigger even when the user only mentions part of the flow (e.g.
   "commit and make the Zoho ticket") — the steps are meant to run together as
   a single pipeline.
+allowed-tools:
+  - mcp__zoho-projects__createProject
+  - mcp__zoho-projects__updateProject
+  - mcp__zoho-projects__trashProject
+  - mcp__zoho-projects__restoreProject
+  - mcp__zoho-projects__createTaskList
+  - mcp__zoho-projects__createDefaultTasklist
+  - mcp__zoho-projects__updateTaskList
+  - mcp__zoho-projects__createTask
+  - mcp__zoho-projects__updateTask
+  - mcp__zoho-projects__createPhase
+  - mcp__zoho-projects__updatePhase
+  - mcp__zoho-projects__createProjectIssue
+  - mcp__zoho-projects__updateIssue
 ---
 
 # Log, Commit, Push & Zoho Subtask
@@ -45,21 +59,24 @@ These IDs are resolved and stable — use them directly with the
 
 These go straight into `path_variables` (`portal_id`, `project_id`, `task_id`)
 for any `mcp__zoho-projects__*` call about this task — get details, list
-subtasks, add a comment, or create a new subtask. Do not call
-`get_portals` / `get_projects_list` / `get_tasks_by_*` to rediscover them.
+subtasks, or create a new subtask. Do not call `getAllPortals` /
+`getAllProjects` / `getTasksByPortal` to rediscover them.
 
 Useful direct calls against the parent task:
 
-- **Get the task itself**: `ZohoProjects_get_task_details` with the IDs above.
-- **List its subtasks**: `ZohoProjects_get_tasks_by_project` filtered to
+- **Get the task itself**: `getTaskDetails` with the IDs above.
+- **List its subtasks**: `getTasksByProject` filtered to
   `parental_info.parent_task_id = 688906000092147305`, or just call
-  `get_task_details` and check `association_info.has_subtasks`, then
-  `get_tasks_by_project` sorted by `created_time` and match `parental_info`.
-- **Add a comment**: `ZohoProjects_add_task_comment` with `task_id
-  688906000092147305`.
-- **Create a new subtask**: `ZohoProjects_create_a_task` with `project_id
+  `getTaskDetails` and check `association_info.has_subtasks`, then
+  `getTasksByProject` sorted by `created_time` and match `parental_info`.
+- **Create a new subtask**: `createTask` with `project_id
   688906000001071159` and `body.parental_info.parent_task_id =
   "688906000092147305"` (this is what Step 4 below does).
+
+Note: this connector has no comment-on-task tool (no `addComment`-style
+call in the tool list). If the user asks to "add a comment" to
+UNT-T48831, say so rather than improvising a call — don't substitute
+`updateTask` or another tool to fake a comment.
 
 If any of these IDs ever come back 404/not-found (e.g. the task was moved or
 deleted), stop and tell the user rather than silently searching for a
@@ -138,7 +155,7 @@ Capture the details Step 4 needs:
 
 ## Step 4 — Create the Zoho subtask
 
-Call `mcp__zoho-projects__ZohoProjects_create_a_task` directly with the fixed
+Call `mcp__zoho-projects__createTask` directly with the fixed
 IDs from the table above — no auth/search step required first (the
 `mcp__zoho-projects__*` tools are already connected). Use:
 
@@ -177,8 +194,8 @@ Notes for reliability:
   up again.
 - `status` is not a free field on create; if you need it set to something
   other than the project's default open status, create the task first, then
-  call `ZohoProjects_update_a_task` (same `task_id` returned by create) with
-  the desired `status.id`. Use `ZohoProjects_get_task_details` on the parent
+  call `updateTask` (same `task_id` returned by create) with
+  the desired `status.id`. Use `getTaskDetails` on the parent
   task to see the project's status options if the exact "In Progress" id is
   needed, or match the closest in-progress status and note the substitution.
 
