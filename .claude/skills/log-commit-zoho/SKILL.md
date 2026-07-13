@@ -25,6 +25,7 @@ allowed-tools:
   - mcp__zoho-projects__updatePhase
   - mcp__zoho-projects__createProjectIssue
   - mcp__zoho-projects__updateIssue
+disable-model-invocation: true
 ---
 
 # Log, Commit, Push & Zoho Subtask
